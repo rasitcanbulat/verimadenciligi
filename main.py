@@ -1,57 +1,48 @@
-# 📦 GEREKLİ KÜTÜPHANELERİ YÜKLE
+# main.py
+
+# 📦 Gerekli Kütüphaneler
 import pandas as pd
 import re
 import string
+import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 
-# 1️⃣ VERİ SETİNİ YÜKLE
-# Not: Dosya yolunu kendi bilgisayarındaki konuma göre değiştir.
-dosya_yolu = r"C:\Users\hakan\Desktop\training.1600000.processed.noemoticon.csv"
-
-# CSV'yi oku, encoding ve sütunlar belirleniyor
+# 1️⃣ Veri Setini Yükle
+print("Veri seti yükleniyor...")
+dosya_yolu = "training.1600000.processed.noemoticon.csv"  # Github'a göre dosya aynı klasörde olmalı
 df = pd.read_csv(dosya_yolu, encoding="latin-1", header=None)
 df.columns = ["target", "id", "date", "flag", "user", "text"]
-
-# Yalnızca target (etiket) ve text (tweet) kolonlarını alıyoruz
 df = df[["target", "text"]]
+df["target"] = df["target"].replace({4: 1})  # 4 → 1
 
-# 4 = pozitif → 1 yap, 0 zaten negatif
-df["target"] = df["target"].replace({4: 1})
 
-print("Veri seti başarıyla yüklendi. İlk 5 satır:")
-print(df.head())
-
-# 2️⃣ METİN TEMİZLEME FONKSİYONU
+# 2️⃣ Tweet Temizleme Fonksiyonu
 def temizle(text):
-    text = text.lower()  # Küçük harf
-    text = re.sub(r"http\S+", "", text)  # link sil
-    text = re.sub(r"@\w+", "", text)     # @mention sil
-    text = re.sub(r"#", "", text)        # hashtag sembolü sil
-    text = re.sub(r"\d+", "", text)      # sayılar sil
-    text = text.translate(str.maketrans("", "", string.punctuation))  # noktalama sil
+    text = text.lower()
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"@\w+", "", text)
+    text = re.sub(r"#", "", text)
+    text = re.sub(r"\d+", "", text)
+    text = text.translate(str.maketrans("", "", string.punctuation))
     return text.strip()
 
-# Temizleme fonksiyonunu tüm tweet'lere uygula
+
 df["text"] = df["text"].apply(temizle)
+df = df[df["text"].str.strip() != ""]
 
-print("\nTemizlenmiş ilk 5 tweet:")
-print(df.head())
-
-# 3️⃣ METNİ TF-IDF VEKÖRÜNE DÖNÜŞTÜR
-tfidf = TfidfVectorizer(max_features=5000)  # En çok geçen 5000 kelime
-X = tfidf.fit_transform(df["text"])         # X: Özellikler (vektör)
-y = df["target"]                            # y: Etiket
-
-# Eğitim ve test verisini ayır (80% eğitim, 20% test)
+# 3️⃣ TF-IDF ile Sayısallaştırma
+tfidf = TfidfVectorizer(max_features=5000)
+X = tfidf.fit_transform(df["text"])
+y = df["target"]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# 4️⃣ MODELLERİ TANIMLA VE EĞİT
+# 4️⃣ Modelleri Eğit ve Karşılaştır
 modeller = {
     "Logistic Regression": LogisticRegression(max_iter=1000),
     "Naive Bayes": MultinomialNB(),
@@ -59,37 +50,28 @@ modeller = {
     "SVM": LinearSVC()
 }
 
-# Her model için eğit, tahmin yap ve değerlendir
+print("\nModeller eğitiliyor ve değerlendiriliyor...")
+
+dogruluklar = []
 for ad, model in modeller.items():
-    print(f"\n🔹 {ad} modeli eğitiliyor...")
+    print(f"\n🔹 {ad}")
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    print("Doğruluk Oranı:", accuracy_score(y_test, y_pred))
+    print("Accuracy:", accuracy_score(y_test, y_pred))
     print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
     print("Classification Report:\n", classification_report(y_test, y_pred))
 
-from sklearn.metrics import accuracy_score
+    # Confusion matrix görselleştir
+    cm = confusion_matrix(y_test, y_pred)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+    disp.plot(cmap="Blues")
+    plt.title(f"{ad} - Confusion Matrix")
+    plt.show()
 
-dogruluklar = []
-modeller = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "Naive Bayes": MultinomialNB(),
-    "Random Forest": RandomForestClassifier(n_estimators=100),
-    "SVM": LinearSVC()
-}
+    dogruluklar.append(accuracy_score(y_test, y_pred))
 
-for ad, model in modeller.items():
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    dogruluklar.append(acc)
-
-ozet = {
-    "Model": list(modeller.keys()),
-    "Doğruluk": dogruluklar
-}
-
-df_ozet = pd.DataFrame(ozet)
-df_ozet
-
+# 5️⃣ Özet Tablosu
+print("\nModellerin başarı özetleri:")
+for model_adi, acc in zip(modeller.keys(), dogruluklar):
+    print(f"{model_adi}: {acc:.4f}")
